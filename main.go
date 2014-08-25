@@ -31,8 +31,8 @@ func main() {
 	// are necessarily "out of order"
 
 	// 1. Link the autocmd events TextChanged and TextChangedI to send an event on a topic
-	topic := "cursor_moved"
-	com := fmt.Sprintf(`au TextChanged,TextChangedI <buffer> call send_event(0, "%v", [1])`, topic)
+	topic := "text_changed"
+	com := fmt.Sprintf(`au TextChanged,TextChangedI <buffer> call send_event(0, "%v", [])`, topic)
 	c.Command(com)
 
 	// 2. Register a subscription event (and error) channel in our client on this topic
