@@ -18,46 +18,49 @@ import (
 	"github.com/myitcv/neovim"
 )
 
-// WARNING: this code is rather messy right now..
-
 func main() {
 	c, err := neovim.NewUnixClient("unix", nil, &net.UnixAddr{Name: os.Getenv("NEOVIM_LISTEN_ADDRESS")})
 	if err != nil {
 		log.Fatalf("Could not setup client: %v", errgo.Details(err))
 	}
+
+	// whilst in development, we will simply bail out on errors
 	c.PanicOnError = true
 
-	event := "cursor_moved"
+	// we want to know when the buffer changes. We do this in a few steps, which
+	// are necessarily "out of order"
 
-	// cause go files to trigger the event
-	com := fmt.Sprintf(`au TextChanged,TextChangedI <buffer> call send_event(0, "%v", [1])`, event)
+	// 1. Link the autocmd events TextChanged and TextChangedI to send an event on a topic
+	topic := "cursor_moved"
+	com := fmt.Sprintf(`au TextChanged,TextChangedI <buffer> call send_event(0, "%v", [1])`, topic)
 	c.Command(com)
 
-	// now register to process that event
+	// 2. Register a subscription event (and error) channel in our client on this topic
 	respChan := make(chan neovim.SubscriptionEvent)
 	errChan := make(chan error)
 	c.SubChan <- neovim.Subscription{
-		Topic:  event,
+		Topic:  topic,
 		Events: respChan,
 		Error:  errChan,
 	}
 
-	// was registration successful?
+	// 3. Check the registration succeeded; errors here would mean we already have
+	// a subscription setup for this topic
 	err = <-errChan
 	if err != nil {
 		log.Fatalf("Could not setup subscription: %v\n", err)
 	}
 
-	// now perform the subscribe in Neovim
-	c.Subscribe("cursor_moved")
+	// 4. Perform the subscribe on the topic; our client will now be told about events on this topic
+	c.Subscribe(topic)
 
-	// now listen for that event
+	// subscription done
+
+	// Consume events, parse and send back commands to highlight
 	for {
 		select {
 		case <-respChan:
 			// write the current buffer to a temp file
-			// TODO there is probably a better way of doing this...
-			// that also avoids running the go tool as a separate process?
 			cb, _ := c.GetCurrentBuffer()
 			tf, err := tempFile()
 			if err != nil {
@@ -67,7 +70,7 @@ func main() {
 			for _, v := range bc {
 				_, err := tf.WriteString(v + "\n")
 				if err != nil {
-					log.Fatalf("Could not write to temp file", errgo.Details(err))
+					log.Fatalf("Could not write to temp file: %v\n", errgo.Details(err))
 				}
 			}
 			err = tf.Close()
@@ -75,8 +78,8 @@ func main() {
 				log.Fatalf("Could not close temp file: %v\n", errgo.Details(err))
 			}
 
+			// parse the temp file
 			fset := token.NewFileSet()
-
 			f, err := parser.ParseFile(fset, tf.Name(), nil, parser.AllErrors)
 			if f == nil && err != nil {
 				fmt.Println("We got an error on the parse")
@@ -84,37 +87,68 @@ func main() {
 
 			// ast.Print(fset, f)
 
+			// generate our highlight positions
 			sg := &synGenerator{fset: fset, f: f}
 			ast.Walk(sg, f)
+
+			// clear current matches
 			c.Command("call clearmatches()")
-			if len(sg.functions) > 0 {
-				synCom := ""
-				join := ""
-				for i := range sg.functions {
-					pos := sg.functions[i]
-					// fmt.Printf("We got a function at %v:%v\n", pos.Line, pos.Column)
-					synCom = fmt.Sprintf("%v%v\\%%%vl\\%%%vc.\\{4\\}", synCom, join, pos.Line, pos.Column)
-					join = "\\|"
-				}
-				resCom := fmt.Sprintf("match Keyword /%v/", synCom)
-				// fmt.Println(resCom)
-				c.Command(resCom)
-			}
+
+			// set the highlights
+			c.Command(sg.genList("Keyword", sg.keywords))
+			c.Command(sg.genList("Statement", sg.statements))
+			c.Command(sg.genList("String", sg.strings))
 		}
 	}
 }
 
+type position struct {
+	l    int
+	line int
+	col  int
+}
+
 type synGenerator struct {
-	fset      *token.FileSet
-	f         *ast.File
-	functions []*token.Position
+	fset       *token.FileSet
+	f          *ast.File
+	keywords   []position
+	statements []position
+	strings    []position
+}
+
+func (s *synGenerator) genList(prefix string, l []position) string {
+	list := ""
+	join := ""
+	for i := range l {
+		pos := l[i]
+		list = fmt.Sprintf("%v%v\\%%%vl\\%%%vc.\\{%v\\}", list, join, pos.line, pos.col, pos.l)
+		join = "\\|"
+	}
+	res := fmt.Sprintf("call matchadd('%v', '%v')", prefix, list)
+	// fmt.Printf("%v: %v\n", prefix, res)
+	return res
 }
 
 func (s *synGenerator) Visit(node ast.Node) ast.Visitor {
 	switch node := node.(type) {
+	case *ast.File:
+		pos := s.fset.Position(node.Package)
+		s.statements = append(s.statements, position{l: 7, line: pos.Line, col: pos.Column})
+	case *ast.BasicLit:
+		pos := s.fset.Position(node.ValuePos)
+		if node.Kind == token.STRING {
+			s.strings = append(s.strings, position{l: len(node.Value), line: pos.Line, col: pos.Column})
+		}
 	case *ast.FuncType:
 		pos := s.fset.Position(node.Func)
-		s.functions = append(s.functions, &pos)
+		s.keywords = append(s.keywords, position{l: 4, line: pos.Line, col: pos.Column})
+	case *ast.GenDecl:
+		pos := s.fset.Position(node.TokPos)
+		if node.Tok == token.VAR {
+			s.keywords = append(s.keywords, position{l: 3, line: pos.Line, col: pos.Column})
+		} else if node.Tok == token.IMPORT {
+			s.statements = append(s.statements, position{l: 6, line: pos.Line, col: pos.Column})
+		}
 	}
 	return s
 }
@@ -141,10 +175,4 @@ func tempFile() (*os.File, error) {
 		log.Fatalf("Could not create temp file: %v\n", err)
 	}
 	return res, nil
-}
-
-type buildError struct {
-	file   string
-	line   uint64
-	errMsg string
 }
