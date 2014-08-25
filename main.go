@@ -85,7 +85,7 @@ func main() {
 				fmt.Println("We got an error on the parse")
 			}
 
-			// ast.Print(fset, f)
+			ast.Print(fset, f)
 
 			// generate our highlight positions
 			sg := &synGenerator{fset: fset, f: f}
@@ -98,6 +98,9 @@ func main() {
 			c.Command(sg.genList("Keyword", sg.keywords))
 			c.Command(sg.genList("Statement", sg.statements))
 			c.Command(sg.genList("String", sg.strings))
+			c.Command(sg.genList("Type", sg.types))
+			c.Command(sg.genList("Conditional", sg.conditionals))
+			c.Command(sg.genList("Function", sg.functions))
 		}
 	}
 }
@@ -109,11 +112,14 @@ type position struct {
 }
 
 type synGenerator struct {
-	fset       *token.FileSet
-	f          *ast.File
-	keywords   []position
-	statements []position
-	strings    []position
+	fset         *token.FileSet
+	f            *ast.File
+	keywords     []position
+	statements   []position
+	strings      []position
+	types        []position
+	conditionals []position
+	functions    []position
 }
 
 func (s *synGenerator) genList(prefix string, l []position) string {
@@ -129,26 +135,71 @@ func (s *synGenerator) genList(prefix string, l []position) string {
 	return res
 }
 
+func (s *synGenerator) addKeyword(l int, p token.Position) {
+	s.keywords = append(s.keywords, position{l: l, line: p.Line, col: p.Column})
+}
+
+func (s *synGenerator) addStatement(l int, p token.Position) {
+	s.statements = append(s.statements, position{l: l, line: p.Line, col: p.Column})
+}
+
+func (s *synGenerator) addString(l int, p token.Position) {
+	s.strings = append(s.strings, position{l: l, line: p.Line, col: p.Column})
+}
+
+func (s *synGenerator) addType(l int, p token.Position) {
+	s.types = append(s.types, position{l: l, line: p.Line, col: p.Column})
+}
+
+func (s *synGenerator) addConditional(l int, p token.Position) {
+	s.conditionals = append(s.conditionals, position{l: l, line: p.Line, col: p.Column})
+}
+
+func (s *synGenerator) addFunction(l int, p token.Position) {
+	s.functions = append(s.functions, position{l: l, line: p.Line, col: p.Column})
+}
+
 func (s *synGenerator) Visit(node ast.Node) ast.Visitor {
 	switch node := node.(type) {
 	case *ast.File:
 		pos := s.fset.Position(node.Package)
-		s.statements = append(s.statements, position{l: 7, line: pos.Line, col: pos.Column})
+		s.addStatement(7, pos)
 	case *ast.BasicLit:
 		pos := s.fset.Position(node.ValuePos)
 		if node.Kind == token.STRING {
-			s.strings = append(s.strings, position{l: len(node.Value), line: pos.Line, col: pos.Column})
+			s.addString(len(node.Value), pos)
 		}
 	case *ast.FuncType:
 		pos := s.fset.Position(node.Func)
-		s.keywords = append(s.keywords, position{l: 4, line: pos.Line, col: pos.Column})
+		s.addKeyword(4, pos)
 	case *ast.GenDecl:
 		pos := s.fset.Position(node.TokPos)
 		if node.Tok == token.VAR {
-			s.keywords = append(s.keywords, position{l: 3, line: pos.Line, col: pos.Column})
+			s.addKeyword(3, pos)
 		} else if node.Tok == token.IMPORT {
-			s.statements = append(s.statements, position{l: 6, line: pos.Line, col: pos.Column})
+			s.addStatement(6, pos)
 		}
+	case *ast.Ident:
+		pos := s.fset.Position(node.NamePos)
+		if node.Obj == nil {
+			switch node.Name {
+			case "bool", "string", "error", "int", "int8", "int16", "int32", "int64", "rune", "byte", "uint", "uint8", "uint16", "uint32", "uint64", "uintptr", "float32", "float64", "complex64", "complex128":
+				s.addType(len(node.Name), pos)
+			case "true", "false", "nil", "iota":
+				fmt.Printf("ident: %v\n", node.Name)
+				s.addKeyword(len(node.Name), pos)
+			}
+		} else {
+			if node.Obj.Kind == ast.Fun {
+				s.addFunction(len(node.Obj.Name), pos)
+			}
+		}
+	case *ast.MapType:
+		pos := s.fset.Position(node.Map)
+		s.addType(3, pos)
+	case *ast.IfStmt:
+		pos := s.fset.Position(node.If)
+		s.addConditional(2, pos)
 	}
 	return s
 }
