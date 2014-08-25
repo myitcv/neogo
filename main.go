@@ -85,7 +85,7 @@ func main() {
 				fmt.Println("We got an error on the parse")
 			}
 
-			ast.Print(fset, f)
+			// ast.Print(fset, f)
 
 			// generate our highlight positions
 			sg := &synGenerator{fset: fset, f: f}
@@ -186,7 +186,6 @@ func (s *synGenerator) Visit(node ast.Node) ast.Visitor {
 			case "bool", "string", "error", "int", "int8", "int16", "int32", "int64", "rune", "byte", "uint", "uint8", "uint16", "uint32", "uint64", "uintptr", "float32", "float64", "complex64", "complex128":
 				s.addType(len(node.Name), pos)
 			case "true", "false", "nil", "iota":
-				fmt.Printf("ident: %v\n", node.Name)
 				s.addKeyword(len(node.Name), pos)
 			}
 		} else {
