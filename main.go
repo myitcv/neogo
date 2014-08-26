@@ -5,6 +5,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net"
@@ -18,7 +19,11 @@ import (
 	"github.com/myitcv/neovim"
 )
 
+var fDebug = flag.Bool("debug", false, "enable debug logging")
+
 func main() {
+	flag.Parse()
+
 	c, err := neovim.NewUnixClient("unix", nil, &net.UnixAddr{Name: os.Getenv("NEOVIM_LISTEN_ADDRESS")})
 	if err != nil {
 		log.Fatalf("Could not setup client: %v", errgo.Details(err))
@@ -57,6 +62,7 @@ func main() {
 	// subscription done
 
 	// Consume events, parse and send back commands to highlight
+	sg := NewSynGenerator()
 	for {
 		select {
 		case <-respChan:
@@ -85,22 +91,19 @@ func main() {
 				fmt.Println("We got an error on the parse")
 			}
 
-			// ast.Print(fset, f)
+			if *fDebug {
+				ast.Print(fset, f)
+			}
+
+			// TODO better way? Need to reparse each time?
+			sg.fset = fset
+			sg.f = f
 
 			// generate our highlight positions
-			sg := &synGenerator{fset: fset, f: f}
 			ast.Walk(sg, f)
 
-			// clear current matches
-			c.Command("call clearmatches()")
-
 			// set the highlights
-			c.Command(sg.genList("Keyword", sg.keywords))
-			c.Command(sg.genList("Statement", sg.statements))
-			c.Command(sg.genList("String", sg.strings))
-			c.Command(sg.genList("Type", sg.types))
-			c.Command(sg.genList("Conditional", sg.conditionals))
-			c.Command(sg.genList("Function", sg.functions))
+			sg.sweepMap(c)
 		}
 	}
 }
@@ -109,96 +112,145 @@ type position struct {
 	l    int
 	line int
 	col  int
+	t    nodeType
+}
+
+type action uint32
+
+type nodeType uint32
+
+const (
+	_ADD action = iota
+	_KEEP
+	_DELETE
+)
+
+const (
+	_KEYWORD nodeType = iota
+	_STATEMENT
+	_STRING
+	_TYPE
+	_CONDITIONAL
+	_FUNCTION
+)
+
+func (n nodeType) String() string {
+	switch n {
+	case _KEYWORD:
+		return "Keyword"
+	case _STATEMENT:
+		return "Statement"
+	case _STRING:
+		return "String"
+	case _TYPE:
+		return "Type"
+	case _CONDITIONAL:
+		return "Conditional"
+	case _FUNCTION:
+		return "Function"
+	default:
+		panic("Unknown const mapping")
+	}
+	return ""
+}
+
+type match struct {
+	id int64
+	a  action
 }
 
 type synGenerator struct {
-	fset         *token.FileSet
-	f            *ast.File
-	keywords     []position
-	statements   []position
-	strings      []position
-	types        []position
-	conditionals []position
-	functions    []position
+	fset  *token.FileSet
+	f     *ast.File
+	nodes map[position]*match
 }
 
-func (s *synGenerator) genList(prefix string, l []position) string {
-	list := ""
-	join := ""
-	for i := range l {
-		pos := l[i]
-		list = fmt.Sprintf("%v%v\\%%%vl\\%%%vc.\\{%v\\}", list, join, pos.line, pos.col, pos.l)
-		join = "\\|"
+func NewSynGenerator() *synGenerator {
+	res := &synGenerator{
+		nodes: make(map[position]*match),
 	}
-	res := fmt.Sprintf("call matchadd('%v', '%v')", prefix, list)
-	// fmt.Printf("%v: %v\n", prefix, res)
 	return res
 }
 
-func (s *synGenerator) addKeyword(l int, p token.Position) {
-	s.keywords = append(s.keywords, position{l: l, line: p.Line, col: p.Column})
+func (s *synGenerator) sweepMap(c *neovim.Client) {
+	for pos, m := range s.nodes {
+		switch m.a {
+		case _ADD:
+			com := fmt.Sprintf("matchadd('%v', '\\%%%vl\\%%%vc.\\{%v\\}')", pos.t, pos.line, pos.col, pos.l)
+			id_i, _ := c.Eval(com)
+			if *fDebug {
+				fmt.Printf("%v, res = %v\n", com, id_i)
+			}
+			id := id_i.(int64)
+			m.id = id
+			m.a = _DELETE
+		case _DELETE:
+			com := fmt.Sprintf("matchdelete(%v)", m.id)
+			c.Eval(com)
+			if *fDebug {
+				fmt.Printf("%v\n", com)
+			}
+			delete(s.nodes, pos)
+		case _KEEP:
+			m.a = _DELETE
+		}
+	}
 }
 
-func (s *synGenerator) addStatement(l int, p token.Position) {
-	s.statements = append(s.statements, position{l: l, line: p.Line, col: p.Column})
-}
-
-func (s *synGenerator) addString(l int, p token.Position) {
-	s.strings = append(s.strings, position{l: l, line: p.Line, col: p.Column})
-}
-
-func (s *synGenerator) addType(l int, p token.Position) {
-	s.types = append(s.types, position{l: l, line: p.Line, col: p.Column})
-}
-
-func (s *synGenerator) addConditional(l int, p token.Position) {
-	s.conditionals = append(s.conditionals, position{l: l, line: p.Line, col: p.Column})
-}
-
-func (s *synGenerator) addFunction(l int, p token.Position) {
-	s.functions = append(s.functions, position{l: l, line: p.Line, col: p.Column})
+func (s *synGenerator) addNode(t nodeType, l int, p token.Position) {
+	pos := position{t: t, l: l, line: p.Line, col: p.Column}
+	if m, ok := s.nodes[pos]; ok {
+		// when we call add, we mark the match as delete
+		// for efficiency next time around, hence the need
+		// to mark this as keep
+		m.a = _KEEP
+	} else {
+		// we leave anything that needs to be deleted
+		// and add a new match, with action == _ADD
+		s.nodes[pos] = &match{a: _ADD}
+	}
 }
 
 func (s *synGenerator) Visit(node ast.Node) ast.Visitor {
 	switch node := node.(type) {
 	case *ast.File:
 		pos := s.fset.Position(node.Package)
-		s.addStatement(7, pos)
+		s.addNode(_STATEMENT, 7, pos)
 	case *ast.BasicLit:
 		pos := s.fset.Position(node.ValuePos)
 		if node.Kind == token.STRING {
-			s.addString(len(node.Value), pos)
+			s.addNode(_STRING, len(node.Value), pos)
 		}
 	case *ast.FuncType:
 		pos := s.fset.Position(node.Func)
-		s.addKeyword(4, pos)
+		s.addNode(_KEYWORD, 4, pos)
 	case *ast.GenDecl:
 		pos := s.fset.Position(node.TokPos)
 		if node.Tok == token.VAR {
-			s.addKeyword(3, pos)
+			s.addNode(_KEYWORD, 3, pos)
 		} else if node.Tok == token.IMPORT {
-			s.addStatement(6, pos)
+			s.addNode(_STATEMENT, 6, pos)
 		}
 	case *ast.Ident:
 		pos := s.fset.Position(node.NamePos)
 		if node.Obj == nil {
 			switch node.Name {
 			case "bool", "string", "error", "int", "int8", "int16", "int32", "int64", "rune", "byte", "uint", "uint8", "uint16", "uint32", "uint64", "uintptr", "float32", "float64", "complex64", "complex128":
-				s.addType(len(node.Name), pos)
+				s.addNode(_TYPE, len(node.Name), pos)
 			case "true", "false", "nil", "iota":
-				s.addKeyword(len(node.Name), pos)
+				s.addNode(_KEYWORD, len(node.Name), pos)
 			}
 		} else {
 			if node.Obj.Kind == ast.Fun {
-				s.addFunction(len(node.Obj.Name), pos)
+				s.addNode(_FUNCTION, len(node.Obj.Name), pos)
 			}
 		}
 	case *ast.MapType:
 		pos := s.fset.Position(node.Map)
-		s.addType(3, pos)
+		s.addNode(_TYPE, 3, pos)
 	case *ast.IfStmt:
 		pos := s.fset.Position(node.If)
-		s.addConditional(2, pos)
+		s.addNode(_CONDITIONAL, 2, pos)
 	}
 	return s
 }
