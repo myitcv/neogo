@@ -138,6 +138,8 @@ const (
 	_CONDITIONAL
 	_FUNCTION
 	_COMMENT
+	_LABEL
+	_REPEAT
 )
 
 func (n nodeType) String() string {
@@ -156,6 +158,10 @@ func (n nodeType) String() string {
 		return "Function"
 	case _COMMENT:
 		return "Comment"
+	case _LABEL:
+		return "Label"
+	case _REPEAT:
+		return "Repeat"
 	default:
 		panic("Unknown const mapping")
 	}
@@ -163,7 +169,7 @@ func (n nodeType) String() string {
 }
 
 type match struct {
-	id int64
+	id uint64
 	a  action
 }
 
@@ -185,12 +191,16 @@ func (s *synGenerator) sweepMap(c *neovim.Client) {
 		switch m.a {
 		case _ADD:
 			com := fmt.Sprintf("matchadd('%v', '\\%%%vl\\%%%vc\\_.\\{%v\\}')", pos.t, pos.line, pos.col, pos.l)
-			id_i, _ := c.Eval(com)
+			id, _ := c.Eval(com)
 			if *fDebug {
-				fmt.Printf("%v, res = %v\n", com, id_i)
+				fmt.Printf("%v, res = %v\n", com, id)
 			}
-			id := id_i.(int64)
-			m.id = id
+			switch id := id.(type) {
+			case uint64:
+				m.id = id
+			case int64:
+				m.id = uint64(id)
+			}
 			m.a = _DELETE
 		case _DELETE:
 			com := fmt.Sprintf("matchdelete(%v)", m.id)
@@ -205,7 +215,8 @@ func (s *synGenerator) sweepMap(c *neovim.Client) {
 	}
 }
 
-func (s *synGenerator) addNode(t nodeType, l int, p token.Position) {
+func (s *synGenerator) addNode(t nodeType, l int, _p token.Pos) {
+	p := s.fset.Position(_p)
 	pos := position{t: t, l: l, line: p.Line, col: p.Column}
 	if m, ok := s.nodes[pos]; ok {
 		// when we call add, we mark the match as delete
@@ -220,52 +231,80 @@ func (s *synGenerator) addNode(t nodeType, l int, p token.Position) {
 }
 
 func (s *synGenerator) Visit(node ast.Node) ast.Visitor {
+	var handleType func(ast.Expr)
+	handleType = func(t ast.Expr) {
+		switch node := t.(type) {
+		case *ast.Ident:
+			s.addNode(_TYPE, len(node.Name), node.NamePos)
+		case *ast.FuncType:
+			s.addNode(_KEYWORD, 4, node.Func)
+		case *ast.ChanType:
+			s.addNode(_TYPE, 4, node.Begin)
+			// TODO add highligthing of chan arrow?
+			handleType(node.Value)
+		case *ast.MapType:
+			s.addNode(_TYPE, 3, node.Map)
+			handleType(node.Key)
+			handleType(node.Value)
+		}
+	}
 	switch node := node.(type) {
 	case *ast.File:
-		pos := s.fset.Position(node.Package)
-		s.addNode(_STATEMENT, 7, pos)
+		s.addNode(_STATEMENT, 7, node.Package)
 	case *ast.BasicLit:
-		pos := s.fset.Position(node.ValuePos)
 		if node.Kind == token.STRING {
-			s.addNode(_STRING, len(node.Value), pos)
+			s.addNode(_STRING, len(node.Value), node.ValuePos)
 		}
-	case *ast.FuncType:
-		pos := s.fset.Position(node.Func)
-		s.addNode(_KEYWORD, 4, pos)
 	case *ast.Comment:
-		pos := s.fset.Position(node.Slash)
-		s.addNode(_COMMENT, len(node.Text), pos)
+		s.addNode(_COMMENT, len(node.Text), node.Slash)
 	case *ast.GenDecl:
-		pos := s.fset.Position(node.TokPos)
 		switch node.Tok {
 		case token.VAR:
-			s.addNode(_KEYWORD, 3, pos)
+			s.addNode(_KEYWORD, 3, node.TokPos)
 		case token.IMPORT:
-			s.addNode(_STATEMENT, 6, pos)
+			s.addNode(_STATEMENT, 6, node.TokPos)
 		case token.CONST:
-			s.addNode(_KEYWORD, 5, pos)
+			s.addNode(_KEYWORD, 5, node.TokPos)
+		case token.TYPE:
+			s.addNode(_KEYWORD, 4, node.TokPos)
 		}
-	case *ast.Ident:
-		pos := s.fset.Position(node.NamePos)
-		if node.Obj == nil {
-			switch node.Name {
-			case "bool", "string", "error", "int", "int8", "int16", "int32", "int64", "rune", "byte", "uint", "uint8", "uint16", "uint32", "uint64", "uintptr", "float32", "float64", "complex64", "complex128":
-				s.addNode(_TYPE, len(node.Name), pos)
-			case "true", "false", "nil", "iota":
-				s.addNode(_KEYWORD, len(node.Name), pos)
-			}
-		} else {
-			switch node.Obj.Kind {
-			case ast.Fun:
-				s.addNode(_FUNCTION, len(node.Obj.Name), pos)
-			}
-		}
-	case *ast.MapType:
-		pos := s.fset.Position(node.Map)
-		s.addNode(_TYPE, 3, pos)
+	case *ast.StructType:
+		s.addNode(_KEYWORD, 6, node.Struct)
+	case *ast.InterfaceType:
+		s.addNode(_KEYWORD, 9, node.Interface)
+	case *ast.ReturnStmt:
+		s.addNode(_KEYWORD, 6, node.Return)
+	case *ast.BranchStmt:
+		s.addNode(_KEYWORD, len(node.Tok.String()), node.TokPos)
+	case *ast.ForStmt:
+		s.addNode(_REPEAT, 3, node.For)
+	case *ast.GoStmt:
+		s.addNode(_STATEMENT, 2, node.Go)
+	case *ast.DeferStmt:
+		s.addNode(_STATEMENT, 5, node.Defer)
+	case *ast.FuncDecl:
+		s.addNode(_FUNCTION, len(node.Name.Name), node.Name.NamePos)
+		handleType(node.Type)
+	case *ast.Field:
+		handleType(node.Type)
+	case *ast.ValueSpec:
+		handleType(node.Type)
+	case *ast.SwitchStmt:
+		s.addNode(_CONDITIONAL, 6, node.Switch)
+	case *ast.SelectStmt:
+		s.addNode(_CONDITIONAL, 6, node.Select)
+	case *ast.CaseClause:
+		s.addNode(_LABEL, 4, node.Case)
+	case *ast.RangeStmt:
+		// TODO is this always safe to do?
+		s.addNode(_REPEAT, 3, node.For)
+		key := node.Key.(*ast.Ident)
+		ass := key.Obj.Decl.(*ast.AssignStmt)
+		rhs := ass.Rhs[0].(*ast.UnaryExpr)
+		s.addNode(_REPEAT, 5, rhs.OpPos)
 	case *ast.IfStmt:
-		pos := s.fset.Position(node.If)
-		s.addNode(_CONDITIONAL, 2, pos)
+		s.addNode(_CONDITIONAL, 2, node.If)
+		// TODO need to find a way to add else highlighting
 	}
 	return s
 }
