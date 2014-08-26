@@ -20,6 +20,7 @@ import (
 )
 
 var fDebug = flag.Bool("debug", false, "enable debug logging")
+var fDebugAST = flag.Bool("debugAST", false, "enable print of AST")
 
 func main() {
 	flag.Parse()
@@ -86,12 +87,12 @@ func main() {
 
 			// parse the temp file
 			fset := token.NewFileSet()
-			f, err := parser.ParseFile(fset, tf.Name(), nil, parser.AllErrors)
+			f, err := parser.ParseFile(fset, tf.Name(), nil, parser.AllErrors|parser.ParseComments)
 			if f == nil && err != nil {
 				fmt.Println("We got an error on the parse")
 			}
 
-			if *fDebug {
+			if *fDebugAST {
 				ast.Print(fset, f)
 			}
 
@@ -101,6 +102,10 @@ func main() {
 
 			// generate our highlight positions
 			ast.Walk(sg, f)
+
+			for _, c := range f.Comments {
+				ast.Walk(sg, c)
+			}
 
 			// set the highlights
 			sg.sweepMap(c)
@@ -132,6 +137,7 @@ const (
 	_TYPE
 	_CONDITIONAL
 	_FUNCTION
+	_COMMENT
 )
 
 func (n nodeType) String() string {
@@ -148,6 +154,8 @@ func (n nodeType) String() string {
 		return "Conditional"
 	case _FUNCTION:
 		return "Function"
+	case _COMMENT:
+		return "Comment"
 	default:
 		panic("Unknown const mapping")
 	}
@@ -176,7 +184,7 @@ func (s *synGenerator) sweepMap(c *neovim.Client) {
 	for pos, m := range s.nodes {
 		switch m.a {
 		case _ADD:
-			com := fmt.Sprintf("matchadd('%v', '\\%%%vl\\%%%vc.\\{%v\\}')", pos.t, pos.line, pos.col, pos.l)
+			com := fmt.Sprintf("matchadd('%v', '\\%%%vl\\%%%vc\\_.\\{%v\\}')", pos.t, pos.line, pos.col, pos.l)
 			id_i, _ := c.Eval(com)
 			if *fDebug {
 				fmt.Printf("%v, res = %v\n", com, id_i)
@@ -224,12 +232,18 @@ func (s *synGenerator) Visit(node ast.Node) ast.Visitor {
 	case *ast.FuncType:
 		pos := s.fset.Position(node.Func)
 		s.addNode(_KEYWORD, 4, pos)
+	case *ast.Comment:
+		pos := s.fset.Position(node.Slash)
+		s.addNode(_COMMENT, len(node.Text), pos)
 	case *ast.GenDecl:
 		pos := s.fset.Position(node.TokPos)
-		if node.Tok == token.VAR {
+		switch node.Tok {
+		case token.VAR:
 			s.addNode(_KEYWORD, 3, pos)
-		} else if node.Tok == token.IMPORT {
+		case token.IMPORT:
 			s.addNode(_STATEMENT, 6, pos)
+		case token.CONST:
+			s.addNode(_KEYWORD, 5, pos)
 		}
 	case *ast.Ident:
 		pos := s.fset.Position(node.NamePos)
@@ -241,7 +255,8 @@ func (s *synGenerator) Visit(node ast.Node) ast.Visitor {
 				s.addNode(_KEYWORD, len(node.Name), pos)
 			}
 		} else {
-			if node.Obj.Kind == ast.Fun {
+			switch node.Obj.Kind {
+			case ast.Fun:
 				s.addNode(_FUNCTION, len(node.Obj.Name), pos)
 			}
 		}
