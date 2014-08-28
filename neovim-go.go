@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strings"
 
 	"go/ast"
 	"go/parser"
@@ -67,27 +68,13 @@ func main() {
 	for {
 		select {
 		case <-respChan:
-			// write the current buffer to a temp file
 			cb, _ := c.GetCurrentBuffer()
-			tf, err := tempFile()
-			if err != nil {
-				log.Fatalf("Could not create temp file: %v\n", errgo.Details(err))
-			}
+			bn, _ := cb.GetName()
 			bc, _ := cb.GetSlice(0, -1, true, true)
-			for _, v := range bc {
-				_, err := tf.WriteString(v + "\n")
-				if err != nil {
-					log.Fatalf("Could not write to temp file: %v\n", errgo.Details(err))
-				}
-			}
-			err = tf.Close()
-			if err != nil {
-				log.Fatalf("Could not close temp file: %v\n", errgo.Details(err))
-			}
+			src := []byte(strings.Join(bc, "\n"))
 
-			// parse the temp file
 			fset := token.NewFileSet()
-			f, err := parser.ParseFile(fset, tf.Name(), nil, parser.AllErrors|parser.ParseComments)
+			f, err := parser.ParseFile(fset, bn, src, parser.AllErrors|parser.ParseComments)
 			if f == nil && err != nil {
 				fmt.Println("We got an error on the parse")
 			}
@@ -96,7 +83,7 @@ func main() {
 				ast.Print(fset, f)
 			}
 
-			// TODO better way? Need to reparse each time?
+			// TODO better way? Do we really need to reparse each time?
 			sg.fset = fset
 			sg.f = f
 
@@ -191,9 +178,10 @@ func (s *synGenerator) sweepMap(c *neovim.Client) {
 		switch m.a {
 		case _ADD:
 			com := fmt.Sprintf("matchadd('%v', '\\%%%vl\\%%%vc\\_.\\{%v\\}')", pos.t, pos.line, pos.col, pos.l)
-			id, _ := c.Eval(com)
+			// id, _ := c.Eval(com)
+			id := interface{}(5)
 			if *fDebug {
-				fmt.Printf("%v, res = %v\n", com, id)
+				fmt.Printf("%v\n", com)
 			}
 			switch id := id.(type) {
 			case uint64:
@@ -307,28 +295,4 @@ func (s *synGenerator) Visit(node ast.Node) ast.Visitor {
 		// TODO need to find a way to add else highlighting
 	}
 	return s
-}
-
-// Use a sledgehammer to crack a nut
-func tempFile() (*os.File, error) {
-	td := os.TempDir()
-	f, err := os.OpenFile("/dev/urandom", os.O_RDONLY, 0)
-	if err != nil {
-		log.Fatalf("Could not open /dev/urandom: %v\n", err)
-	}
-	b := make([]byte, 16)
-	_, err = f.Read(b)
-	if err != nil {
-		log.Fatalf("Could not read from urandom: %v\n", err)
-	}
-	f.Close()
-	if err != nil {
-		log.Fatalf("Could not close urandom: %v\n", err)
-	}
-	uuid := fmt.Sprintf("%v/%x-%x-%x-%x-%x.go", td, b[0:4], b[4:6], b[6:8], b[8:10], b[10:])
-	res, err := os.Create(uuid)
-	if err != nil {
-		log.Fatalf("Could not create temp file: %v\n", err)
-	}
-	return res, nil
 }
