@@ -30,44 +30,24 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not setup client: %v", errgo.Details(err))
 	}
-
-	// whilst in development, we will simply bail out on errors
 	c.PanicOnError = true
 
 	// we want to know when the buffer changes. We do this in a few steps, which
 	// are necessarily "out of order"
 
-	// 1. Link the autocmd events TextChanged and TextChangedI to send an event on a topic
+	// Link the autocmd events TextChanged and TextChangedI to send an event on a topic
 	topic := "text_changed"
 	com := fmt.Sprintf(`au TextChanged,TextChangedI <buffer> call send_event(0, "%v", [])`, topic)
 	c.Command(com)
 
-	// 2. Register a subscription event (and error) channel in our client on this topic
-	respChan := make(chan neovim.SubscriptionEvent)
-	errChan := make(chan error)
-	c.SubChan <- neovim.Subscription{
-		Topic:  topic,
-		Events: respChan,
-		Error:  errChan,
-	}
-
-	// 3. Check the registration succeeded; errors here would mean we already have
-	// a subscription setup for this topic
-	err = <-errChan
-	if err != nil {
-		log.Fatalf("Could not setup subscription: %v\n", err)
-	}
-
-	// 4. Perform the subscribe on the topic; our client will now be told about events on this topic
-	c.Subscribe(topic)
-
-	// subscription done
+	// Register a subscription event (and error) channel in our client on this topic
+	sub, _ := c.Subscribe(topic)
 
 	// Consume events, parse and send back commands to highlight
 	sg := NewSynGenerator()
 	for {
 		select {
-		case <-respChan:
+		case <-sub.Events:
 			cb, _ := c.GetCurrentBuffer()
 			bn, _ := cb.GetName()
 			bc, _ := cb.GetSlice(0, -1, true, true)
@@ -178,8 +158,7 @@ func (s *synGenerator) sweepMap(c *neovim.Client) {
 		switch m.a {
 		case _ADD:
 			com := fmt.Sprintf("matchadd('%v', '\\%%%vl\\%%%vc\\_.\\{%v\\}')", pos.t, pos.line, pos.col, pos.l)
-			// id, _ := c.Eval(com)
-			id := interface{}(5)
+			id, _ := c.Eval(com)
 			if *fDebug {
 				fmt.Printf("%v\n", com)
 			}
