@@ -37,4 +37,3 @@ language-specific commands, e.g, pointsto
 * integration of the Go toolset, e.g. `gofmt`, `godoc`, `godef` (some overlap here with oracle), `test`, `govet`, etc. Again, where
 possible reusing the `go/parser` part of the plugin
 
-
