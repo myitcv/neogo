@@ -6,8 +6,8 @@ import (
 	"go/token"
 	"io/ioutil"
 	"log"
-	"net"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 
@@ -18,6 +18,7 @@ import (
 
 type NeovimGoTest struct {
 	client *neovim.Client
+	nvim   *exec.Cmd
 }
 
 func Test(t *testing.T) { TestingT(t) }
@@ -25,13 +26,37 @@ func Test(t *testing.T) { TestingT(t) }
 var _ = Suite(&NeovimGoTest{})
 
 func (t *NeovimGoTest) SetUpTest(c *C) {
-	la := os.Getenv("NEOVIM_LISTEN_ADDRESS")
-	client, err := neovim.NewUnixClient("unix", nil, &net.UnixAddr{Name: la})
+	// now start the process and wait for the socket file to be created
+	t.nvim = exec.Command(os.Getenv("NEOVIM_BIN"), "-u", "/dev/null")
+	t.nvim.Dir = "/tmp"
+
+	// now we can create a new client
+	client, err := neovim.NewCmdClient(t.nvim)
 	if err != nil {
 		log.Fatalf("Could not setup client: %v", errgo.Details(err))
 	}
+
+	// TODO need to handle nvim subprocess bombing out...
+
+	// this is important; all tests below ignore errors...
 	client.PanicOnError = true
 	t.client = client
+}
+
+func (t *NeovimGoTest) TearDownTest(c *C) {
+	done := make(chan struct{})
+	go func() {
+		state, err := t.nvim.Process.Wait()
+		if err != nil {
+			log.Fatalf("Process did not exit cleanly: %v, %v\n", err, state)
+		}
+		done <- struct{}{}
+	}()
+	err := t.client.Close()
+	if err != nil {
+		log.Fatalf("Could not close client: %v\n", err)
+	}
+	<-done
 }
 
 func (t *NeovimGoTest) BenchmarkBufferGetSlice(c *C) {
