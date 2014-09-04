@@ -25,10 +25,11 @@ Switch back to the Neovim instance, and start writing some Go!
 
 ## Features implemented
 
-* Syntax highlighting via [`go/parser`](http://godoc.org/go/parser) (partial)
+* syntax highlighting via [`go/parser`](http://godoc.org/go/parser) (partial)
 
 ## Features TODO list
 
+* complete syntax highlighting
 * support for syntax-based commands (e.g. fold a function, struct, Tagbar), exposed via commands that
 ultimately take advantage of the `go/parser` integration
 * completion via some integration of [`gocode`](https://github.com/nsf/gocode); reuse the `go/parser`
