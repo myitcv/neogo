@@ -1,4 +1,4 @@
-package main
+package neogo
 
 import (
 	"go/ast"
@@ -19,6 +19,7 @@ import (
 type NeovimGoTest struct {
 	client *neovim.Client
 	nvim   *exec.Cmd
+	plug   neovim.Plugin
 }
 
 func Test(t *testing.T) { TestingT(t) }
@@ -26,24 +27,28 @@ func Test(t *testing.T) { TestingT(t) }
 var _ = Suite(&NeovimGoTest{})
 
 func (t *NeovimGoTest) SetUpTest(c *C) {
-	// now start the process and wait for the socket file to be created
 	t.nvim = exec.Command(os.Getenv("NEOVIM_BIN"), "-u", "/dev/null")
 	t.nvim.Dir = "/tmp"
-
-	// now we can create a new client
 	client, err := neovim.NewCmdClient(t.nvim)
 	if err != nil {
 		log.Fatalf("Could not setup client: %v", errgo.Details(err))
 	}
-
-	// TODO need to handle nvim subprocess bombing out...
-
-	// this is important; all tests below ignore errors...
 	client.PanicOnError = true
 	t.client = client
+
+	plug := &Neogo{}
+	err = plug.Init(t.client)
+	if err != nil {
+		log.Fatalf("Could not Init plugin: %v\n", err)
+	}
+	t.plug = plug
 }
 
 func (t *NeovimGoTest) TearDownTest(c *C) {
+	err := t.plug.Shutdown()
+	if err != nil {
+		log.Fatalf("Could not Shutdown plugin: %v\n", err)
+	}
 	done := make(chan struct{})
 	go func() {
 		state, err := t.nvim.Process.Wait()
@@ -52,7 +57,7 @@ func (t *NeovimGoTest) TearDownTest(c *C) {
 		}
 		done <- struct{}{}
 	}()
-	err := t.client.Close()
+	err = t.client.Close()
 	if err != nil {
 		log.Fatalf("Could not close client: %v\n", err)
 	}
