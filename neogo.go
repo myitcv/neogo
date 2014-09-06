@@ -2,35 +2,28 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package main
+package neogo
 
 import (
-	"flag"
 	"fmt"
-	"log"
-	"net"
-	"os"
 	"strings"
 
 	"go/ast"
 	"go/parser"
 	"go/token"
 
-	"github.com/juju/errgo"
 	"github.com/myitcv/neovim"
 )
 
-var fDebug = flag.Bool("debug", false, "enable debug logging")
-var fDebugAST = flag.Bool("debugAST", false, "enable print of AST")
+type Neogo struct {
+	c *neovim.Client
+}
 
-func main() {
-	flag.Parse()
+var fDebugAST bool
+var fDebug bool
 
-	c, err := neovim.NewUnixClient("unix", nil, &net.UnixAddr{Name: os.Getenv("NEOVIM_LISTEN_ADDRESS")})
-	if err != nil {
-		log.Fatalf("Could not setup client: %v", errgo.Details(err))
-	}
-	c.PanicOnError = true
+func (n *Neogo) Init(c *neovim.Client, l neovim.Logger) error {
+	n.c = c
 
 	// we want to know when the buffer changes. We do this in a few steps, which
 	// are necessarily "out of order"
@@ -59,7 +52,7 @@ func main() {
 				fmt.Println("We got an error on the parse")
 			}
 
-			if *fDebugAST {
+			if fDebugAST {
 				ast.Print(fset, f)
 			}
 
@@ -78,6 +71,12 @@ func main() {
 			sg.sweepMap(c)
 		}
 	}
+
+	return nil
+}
+
+func (n *Neogo) Shutdown() error {
+	return nil
 }
 
 type position struct {
@@ -157,9 +156,9 @@ func (s *synGenerator) sweepMap(c *neovim.Client) {
 	for pos, m := range s.nodes {
 		switch m.a {
 		case _ADD:
-			com := fmt.Sprintf("matchadd('%v', '\\%%%vl\\%%%vc\\_.\\{%v\\}')", pos.t, pos.line, pos.col, pos.l)
+			com := fmt.Sprintf("matchaddpos('%v', [[%v,%v,%v]])", pos.t, pos.line, pos.col, pos.l)
 			id, _ := c.Eval(com)
-			if *fDebug {
+			if fDebug {
 				fmt.Printf("%v\n", com)
 			}
 			switch id := id.(type) {
@@ -172,7 +171,7 @@ func (s *synGenerator) sweepMap(c *neovim.Client) {
 		case _DELETE:
 			com := fmt.Sprintf("matchdelete(%v)", m.id)
 			c.Eval(com)
-			if *fDebug {
+			if fDebug {
 				fmt.Printf("%v\n", com)
 			}
 			delete(s.nodes, pos)

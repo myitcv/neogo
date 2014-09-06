@@ -29,6 +29,7 @@ Switch back to the Neovim instance, and start writing some Go!
 
 ## Features TODO list
 
+* Finish off the standalone command
 * complete syntax highlighting
 * support for syntax-based commands (e.g. fold a function, struct, Tagbar), exposed via commands that
 ultimately take advantage of the `go/parser` integration
@@ -39,4 +40,5 @@ reuse the `go/parser` part of the plugin here. Go Oracle will be exposed via a n
 language-specific commands, e.g, pointsto
 * integration of the Go toolset, e.g. `gofmt`, `godoc`, `godef` (some overlap here with oracle), `test`, `govet`, etc. Again, where
 possible reusing the `go/parser` part of the plugin
+* integration with [`ctrlp.vim`](https://github.com/kien/ctrlp.vim) to provide fuzzy jumping to definitions
 
