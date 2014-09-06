@@ -156,7 +156,7 @@ func (s *synGenerator) sweepMap(c *neovim.Client) {
 	for pos, m := range s.nodes {
 		switch m.a {
 		case _ADD:
-			com := fmt.Sprintf("matchadd('%v', '\\%%%vl\\%%%vc\\_.\\{%v\\}')", pos.t, pos.line, pos.col, pos.l)
+			com := fmt.Sprintf("matchaddpos('%v', [[%v,%v,%v]])", pos.t, pos.line, pos.col, pos.l)
 			id, _ := c.Eval(com)
 			if fDebug {
 				fmt.Printf("%v\n", com)
