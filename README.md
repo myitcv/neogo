@@ -1,6 +1,6 @@
 ## `neovim-go`
 
-[![Build Status](https://travis-ci.org/myitcv/neovim-go.svg?branch=master)](https://travis-ci.org/myitcv/neovim-go)
+[![Build Status](https://travis-ci.org/myitcv/neogo.svg?branch=master)](https://travis-ci.org/myitcv/neogo)
 
 A proof of concept Neovim plugin written against the [`neovim` Go package](http://godoc.org/github.com/myitcv/neovim)
 to support Go development in Neovim.
