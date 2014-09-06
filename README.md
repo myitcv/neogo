@@ -1,4 +1,4 @@
-## `neovim-go`
+## `github.com/myitcv/neogo` - a Neovim plugin for Go development
 
 [![Build Status](https://travis-ci.org/myitcv/neogo.svg?branch=master)](https://travis-ci.org/myitcv/neogo)
 
