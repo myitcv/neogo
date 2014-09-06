@@ -22,7 +22,7 @@ type Neogo struct {
 var fDebugAST bool
 var fDebug bool
 
-func (n *Neogo) Init(c *neovim.Client) error {
+func (n *Neogo) Init(c *neovim.Client, l neovim.Logger) error {
 	n.c = c
 
 	// we want to know when the buffer changes. We do this in a few steps, which

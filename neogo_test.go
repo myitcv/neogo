@@ -29,7 +29,7 @@ var _ = Suite(&NeovimGoTest{})
 func (t *NeovimGoTest) SetUpTest(c *C) {
 	t.nvim = exec.Command(os.Getenv("NEOVIM_BIN"), "-u", "/dev/null")
 	t.nvim.Dir = "/tmp"
-	client, err := neovim.NewCmdClient(t.nvim)
+	client, err := neovim.NewCmdClient(t.nvim, nil)
 	if err != nil {
 		log.Fatalf("Could not setup client: %v", errgo.Details(err))
 	}
@@ -37,7 +37,7 @@ func (t *NeovimGoTest) SetUpTest(c *C) {
 	t.client = client
 
 	plug := &Neogo{}
-	err = plug.Init(t.client)
+	err = plug.Init(t.client, log.New(os.Stderr, "", log.LstdFlags))
 	if err != nil {
 		log.Fatalf("Could not Init plugin: %v\n", err)
 	}
