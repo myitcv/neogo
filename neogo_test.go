@@ -29,7 +29,7 @@ var _ = Suite(&NeovimGoTest{})
 func (t *NeovimGoTest) SetUpTest(c *C) {
 	t.nvim = exec.Command(os.Getenv("NEOVIM_BIN"), "-u", "/dev/null")
 	t.nvim.Dir = "/tmp"
-	client, err := neovim.NewCmdClient(t.nvim, nil)
+	client, err := neovim.NewCmdClient(neovim.NullInitMethod, t.nvim, nil)
 	if err != nil {
 		log.Fatalf("Could not setup client: %v", errgo.Details(err))
 	}
@@ -69,7 +69,7 @@ func (t *NeovimGoTest) BenchmarkBufferGetSlice(c *C) {
 	// can be updated when we can use headless testing
 	cb, _ := t.client.GetCurrentBuffer()
 	for i := 0; i < c.N; i++ {
-		bc, _ := cb.GetSlice(0, -1, true, true)
+		bc, _ := cb.GetLineSlice(0, -1, true, true)
 		_ = []byte(strings.Join(bc, "\n"))
 	}
 }

@@ -16,7 +16,9 @@ import (
 )
 
 type Neogo struct {
-	c *neovim.Client
+	c  *neovim.Client
+	l  neovim.Logger
+	ch chan struct{}
 }
 
 var fDebugAST bool
@@ -24,26 +26,39 @@ var fDebug bool
 
 func (n *Neogo) Init(c *neovim.Client, l neovim.Logger) error {
 	n.c = c
+	n.l = l
 
 	// we want to know when the buffer changes. We do this in a few steps, which
 	// are necessarily "out of order"
 
-	// Link the autocmd events TextChanged and TextChangedI to send an event on a topic
-	topic := "text_changed"
-	com := fmt.Sprintf(`au TextChanged,TextChangedI <buffer> call send_event(0, "%v", [])`, topic)
-	c.Command(com)
+	n.c.RegisterAsyncRequestHandler("BufferUpdate", n.newBufferUpdateResponder)
+	// com := fmt.Sprintf(`au TextChanged,TextChangedI <buffer> call BufferUpdate()`)
+	// c.Command(com)
 
-	// Register a subscription event (and error) channel in our client on this topic
-	sub, _ := c.Subscribe(topic)
+	n.ch = make(chan struct{})
+	go n.parseBuffer(n.ch)
 
+	return nil
+}
+
+func (n *Neogo) Shutdown() error {
+	return nil
+}
+
+func (n *Neogo) BufferUpdate() error {
+	n.ch <- struct{}{}
+	return nil
+}
+
+func (n *Neogo) parseBuffer(ch chan struct{}) {
 	// Consume events, parse and send back commands to highlight
 	sg := NewSynGenerator()
 	for {
 		select {
-		case <-sub.Events:
-			cb, _ := c.GetCurrentBuffer()
+		case <-ch:
+			cb, _ := n.c.GetCurrentBuffer()
 			bn, _ := cb.GetName()
-			bc, _ := cb.GetSlice(0, -1, true, true)
+			bc, _ := cb.GetLineSlice(0, -1, true, true)
 			src := []byte(strings.Join(bc, "\n"))
 
 			fset := token.NewFileSet()
@@ -68,15 +83,9 @@ func (n *Neogo) Init(c *neovim.Client, l neovim.Logger) error {
 			}
 
 			// set the highlights
-			sg.sweepMap(c)
+			sg.sweepMap(n)
 		}
 	}
-
-	return nil
-}
-
-func (n *Neogo) Shutdown() error {
-	return nil
 }
 
 type position struct {
@@ -152,12 +161,12 @@ func NewSynGenerator() *synGenerator {
 	return res
 }
 
-func (s *synGenerator) sweepMap(c *neovim.Client) {
+func (s *synGenerator) sweepMap(n *Neogo) {
 	for pos, m := range s.nodes {
 		switch m.a {
 		case _ADD:
 			com := fmt.Sprintf("matchaddpos('%v', [[%v,%v,%v]])", pos.t, pos.line, pos.col, pos.l)
-			id, _ := c.Eval(com)
+			id, _ := n.c.Eval(com)
 			if fDebug {
 				fmt.Printf("%v\n", com)
 			}
@@ -170,7 +179,7 @@ func (s *synGenerator) sweepMap(c *neovim.Client) {
 			m.a = _DELETE
 		case _DELETE:
 			com := fmt.Sprintf("matchdelete(%v)", m.id)
-			c.Eval(com)
+			n.c.Eval(com)
 			if fDebug {
 				fmt.Printf("%v\n", com)
 			}

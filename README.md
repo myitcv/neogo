@@ -9,19 +9,43 @@ Very very alpha.
 
 ## Running the plugin
 
-Start a Neovim instance:
 
 ```bash
-$ NEOVIM_LISTEN_ADDRESS=/tmp/neovim nvim
-```
-In another terminal:
-
-```bash
-$ go build
-$ NEOVIM_LISTEN_ADDRESS=/tmp/neovim ./neovim-go
+mkdir -p $HOME/.nvim/plugins/go
+go get github.com/myitcv/neovim
+go get github.com/myitcv/neogo
+go get github.com/myitcv/neovim/cmd/neovim-go-plugin-manager
+$GOPATH/bin/neovim-go-plugin-manager github.com/myitcv/neogo
 ```
 
-Switch back to the Neovim instance, and start writing some Go!
+This should give some output along the following lines:
+
+```
+to follow...
+```
+
+Now:
+
+```
+cd $GOPATH/src/github.com/myitcv/neogo
+nvim -i special.vimrc test.file
+```
+
+_ensure the file name you are editing does not end in `.go`_
+
+Now write some go code and watch it highlight as you type!
+
+e.g. try entering:
+
+```go
+package main
+
+import "fmt"
+
+func main() {
+  fmt.Println("Hello, playground")
+}
+```
 
 ## Features implemented
 
@@ -29,16 +53,4 @@ Switch back to the Neovim instance, and start writing some Go!
 
 ## Features TODO list
 
-* Finish off the standalone command
-* complete syntax highlighting
-* support for syntax-based commands (e.g. fold a function, struct, Tagbar), exposed via commands that
-ultimately take advantage of the `go/parser` integration
-* completion via some integration of [`gocode`](https://github.com/nsf/gocode); reuse the `go/parser`
-part of the plugin here
-* integration of [Go oracle](https://docs.google.com/a/myitcv.org.uk/document/d/1SLk36YRjjMgKqe490mSRzOPYEDe0Y_WQNRv-EiFYUyw/view) - again,
-reuse the `go/parser` part of the plugin here. Go Oracle will be exposed via a number of
-language-specific commands, e.g, pointsto
-* integration of the Go toolset, e.g. `gofmt`, `godoc`, `godef` (some overlap here with oracle), `test`, `govet`, etc. Again, where
-possible reusing the `go/parser` part of the plugin
-* integration with [`ctrlp.vim`](https://github.com/kien/ctrlp.vim) to provide fuzzy jumping to definitions
-
+See the [wiki](https://github.com/myitcv/neogo/wiki/TODO)
