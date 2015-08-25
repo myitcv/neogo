@@ -12,6 +12,8 @@ Very very alpha.
 
 ```bash
 mkdir -p $HOME/.nvim/plugins/go
+go get github.com/juju/errgo
+go get gopkg.in/check.v1
 go get github.com/myitcv/neovim
 go get github.com/myitcv/neogo
 go get github.com/myitcv/neovim/cmd/neovim-go-plugin-manager
@@ -35,7 +37,7 @@ Now:
 
 ```
 cd $GOPATH/src/github.com/myitcv/neogo
-nvim -i special.vimrc test.file
+nvim -u special.vimrc test.file
 ```
 
 _ensure the file name you are editing does not end in `.go`_
