@@ -21,7 +21,14 @@ $GOPATH/bin/neovim-go-plugin-manager github.com/myitcv/neogo
 This should give some output along the following lines:
 
 ```
-to follow...
+2015/08/25 21:39:56 Working directory is /tmp/neovim-go-plugin-manager_1440535196810988589
+2015/08/25 21:39:56 Just about to go get -d -t github.com/myitcv/neogo
+2015/08/25 21:39:56 Now running go test github.com/myitcv/neogo
+2015/08/25 21:39:57 Generating plugin host
+2015/08/25 21:39:57 Building plugin host
+2015/08/25 21:39:58 Putting plugin host source into place: /home/myitcv/.nvim/plugins/go/plugin_host.go
+2015/08/25 21:39:58 Putting plugin host into place: /home/myitcv/.nvim/plugins/go/plugin_host
+2015/08/25 21:39:58 Done!
 ```
 
 Now:
