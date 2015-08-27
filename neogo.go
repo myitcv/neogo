@@ -167,9 +167,6 @@ func (s *synGenerator) sweepMap(n *Neogo) {
 		case _ADD:
 			com := fmt.Sprintf("matchaddpos('%v', [[%v,%v,%v]])", pos.t, pos.line, pos.col, pos.l)
 			id, _ := n.c.Eval(com)
-			if fDebug {
-				fmt.Printf("%v\n", com)
-			}
 			switch id := id.(type) {
 			case uint64:
 				m.id = id
@@ -178,6 +175,10 @@ func (s *synGenerator) sweepMap(n *Neogo) {
 			}
 			m.a = _DELETE
 		case _DELETE:
+			if m.id == 0 {
+				// this match never got added
+				continue
+			}
 			com := fmt.Sprintf("matchdelete(%v)", m.id)
 			n.c.Eval(com)
 			if fDebug {

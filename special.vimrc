@@ -1,4 +1,5 @@
 syntax on
+filetype off
 set noswapfile
 
 function! s:RequireGoHost(host)

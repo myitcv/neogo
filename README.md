@@ -38,11 +38,8 @@ This should give some output along the following lines:
 Now:
 
 ```
-cd $GOPATH/src/github.com/myitcv/neogo
-nvim -u special.vimrc test.file
+nvim -u $GOPATH/src/github.com/myitcv/neogo/special.vimrc test.go
 ```
-
-_ensure the file name you are editing does not end in `.go`_
 
 Now write some go code and watch it highlight as you type!
 
