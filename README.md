@@ -2,7 +2,7 @@
 
 [![Build Status](https://travis-ci.org/myitcv/neogo.svg?branch=master)](https://travis-ci.org/myitcv/neogo)
 
-[![YouTube demo of plugin in action](http://img.youtube.com/vi/wkodXlzoJrU/0.jpg)](https://youtu.be/r7Aw5znRfNA)
+[![YouTube demo of plugin in action](http://img.youtube.com/vi/r7Aw5znRfNA/0.jpg)](https://youtu.be/r7Aw5znRfNA)
 
 A proof of concept Neovim plugin written against the [`neovim` Go package](http://godoc.org/github.com/myitcv/neovim)
 to support Go development in Neovim. In particular `neogo` highlights the Go code being edited based on a `go/parser` AST
