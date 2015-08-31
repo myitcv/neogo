@@ -31,7 +31,7 @@ func (n *Neogo) Init(c *neovim.Client, l neovim.Logger) error {
 	// we want to know when the buffer changes. We do this in a few steps, which
 	// are necessarily "out of order"
 
-	n.c.RegisterAsyncRequestHandler("BufferUpdate", n.newBufferUpdateResponder)
+	n.c.RegisterAsyncFunction("BufferUpdate", n.newBufferUpdateResponder, false, false)
 	// com := fmt.Sprintf(`au TextChanged,TextChangedI <buffer> call BufferUpdate()`)
 	// c.Command(com)
 
@@ -45,7 +45,7 @@ func (n *Neogo) Shutdown() error {
 	return nil
 }
 
-func (n *Neogo) BufferUpdate() error {
+func (n *Neogo) BufferUpdate(o *neovim.MethodOptionParams) error {
 	n.ch <- struct{}{}
 	return nil
 }

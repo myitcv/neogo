@@ -1,4 +1,3 @@
-//go:generate msgp
 package neogo
 
 import (
@@ -9,27 +8,26 @@ import (
 // **************************
 // BufferUpdate
 func (n *Neogo) newBufferUpdateResponder() neovim.AsyncDecoder {
-	return &bufferUpdateWrapper{
-		Neogo: n,
-		args:  &BufferUpdateArgs{},
-	}
+	return &bufferUpdateWrapper{Neogo: n}
 }
 
 func (n *bufferUpdateWrapper) Args() msgp.Decodable {
-	return n.args
+	return new(neovim.NilDeocdable)
+}
+
+func (n *bufferUpdateWrapper) Params() *neovim.MethodOptionParams {
+	return nil
+}
+
+func (n *bufferUpdateWrapper) Eval() msgp.Decodable {
+	return nil
 }
 
 type bufferUpdateWrapper struct {
 	*Neogo
-	args *BufferUpdateArgs
-}
-
-//msgp:tuple BufferUpdateArgs
-type BufferUpdateArgs struct {
-	FunctionArgs [0]int64
 }
 
 func (g *bufferUpdateWrapper) Run() error {
-	err := g.Neogo.BufferUpdate()
+	err := g.Neogo.BufferUpdate(nil)
 	return err
 }
