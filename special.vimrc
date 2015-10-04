@@ -22,4 +22,5 @@ if has('nvim')
   endtry
 endif
 
-au TextChanged,TextChangedI <buffer> call BufferUpdate()
+silent! colorscheme sahara
+au CursorMoved,TextChanged,TextChangedI <buffer> call BufferUpdate()

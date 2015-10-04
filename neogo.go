@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// TODO this is very alpha
+// look how we ignore all the errors below
+// very bad. very very bad
+
 package neogo
 
 import (
@@ -50,6 +54,19 @@ func (n *Neogo) BufferUpdate(o *neovim.MethodOptionParams) error {
 	return nil
 }
 
+func getUint64(i interface{}) uint64 {
+	switch i := i.(type) {
+	case int64:
+		return uint64(i)
+	case int:
+		return uint64(i)
+	case uint64:
+		return i
+	default:
+		panic("Type not supported")
+	}
+}
+
 func (n *Neogo) parseBuffer(ch chan struct{}) {
 	// Consume events, parse and send back commands to highlight
 	sg := NewSynGenerator()
@@ -60,6 +77,13 @@ func (n *Neogo) parseBuffer(ch chan struct{}) {
 			bn, _ := cb.GetName()
 			bc, _ := cb.GetLineSlice(0, -1, true, true)
 			src := []byte(strings.Join(bc, "\n"))
+
+			viewPortI, err := n.c.Eval("[winsaveview()['topline'], winsaveview()['topline'] + winheight('%'), winsaveview()['leftcol'], winsaveview()['leftcol'] + winwidth('%')]")
+			viewPort := viewPortI.([]interface{})
+			sg.lStart = getUint64(viewPort[0])
+			sg.lEnd = getUint64(viewPort[1])
+			sg.cStart = getUint64(viewPort[2])
+			sg.cEnd = getUint64(viewPort[3])
 
 			fset := token.NewFileSet()
 			f, err := parser.ParseFile(fset, bn, src, parser.AllErrors|parser.ParseComments)
@@ -148,10 +172,15 @@ type match struct {
 	a  action
 }
 
+type viewport struct {
+	lStart, lEnd, cStart, cEnd uint64
+}
+
 type synGenerator struct {
 	fset  *token.FileSet
 	f     *ast.File
 	nodes map[position]*match
+	viewport
 }
 
 func NewSynGenerator() *synGenerator {
@@ -193,6 +222,9 @@ func (s *synGenerator) sweepMap(n *Neogo) {
 
 func (s *synGenerator) addNode(t nodeType, l int, _p token.Pos) {
 	p := s.fset.Position(_p)
+	if uint64(p.Line) < s.lStart || uint64(p.Line) > s.lEnd {
+		return
+	}
 	pos := position{t: t, l: l, line: p.Line, col: p.Column}
 	if m, ok := s.nodes[pos]; ok {
 		// when we call add, we mark the match as delete
